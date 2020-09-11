@@ -13,7 +13,7 @@ import (
 
 const whitespace = " \t\n\r"
 
-func Find(str []string, x string) int {
+func find(str []string, x string) int {
 	for i, n := range str {
 		if x == n {
 			return i
@@ -22,14 +22,14 @@ func Find(str []string, x string) int {
 	return len(str)
 }
 
-func Min(a, b int) int {
+func min(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
 }
 
-func Map(vs []string, f func(string) string) []string {
+func apply(vs []string, f func(string) string) []string {
 	vsm := make([]string, len(vs))
 	for i, v := range vs {
 		vsm[i] = f(v)
@@ -37,7 +37,7 @@ func Map(vs []string, f func(string) string) []string {
 	return vsm
 }
 
-func CountPrefix(str, chars string) int {
+func countPrefix(str, chars string) int {
 	for i, c := range str {
 		if !strings.ContainsRune(chars, c) {
 			return i
@@ -46,40 +46,41 @@ func CountPrefix(str, chars string) int {
 	return len(str)
 }
 
-func IdentifyPrefix(s string) (string, string) {
-	prefix_len := CountPrefix(s, whitespace)
-	indent_start_pos := strings.LastIndex(s[:prefix_len], "\n") + 1
-	return s[:indent_start_pos], s[indent_start_pos:prefix_len]
+func identifyPrefix(s string) (string, string) {
+	prefixLen := countPrefix(s, whitespace)
+	indentStartPos := strings.LastIndex(s[:prefixLen], "\n") + 1
+	return s[:indentStartPos], s[indentStartPos:prefixLen]
 }
 
-func TrimTrailingWhitespaces(s string) string {
+func trimTrailingWhitespaces(s string) string {
 	lines := strings.Split(s, "\n")
-	lines = Map(lines, func(line string) string { return strings.TrimRight(line, whitespace) })
+	lines = apply(lines, func(line string) string { return strings.TrimRight(line, whitespace) })
 	return strings.Join(lines, "\n")
 }
 
 func main() {
-	flagset := flag.NewFlagSet("main", flag.ContinueOnError)
+	flagset := flag.NewFlagSet("main", flag.ExitOnError)
 	executable := flagset.String("executable", "clang-format", "clang-format excutable name")
+	keepIndentation := flagset.Bool("keep-indentation", true, "keep the original indentation")
+	stripLeadingNewlines := flagset.Bool("strip-leading-newlines", false, "strip newlines before the first line of code")
 
-	args_sep := Find(os.Args, "--")
-	args_to_parse := os.Args[1:args_sep]
-	args_sep = Min(args_sep, len(os.Args)-1)
-	clang_format_flags := os.Args[args_sep+1:]
-	flagset.Parse(args_to_parse)
+	argsSep := find(os.Args, "--")
+	argsToParse := os.Args[1:argsSep]
+	argsSep = min(argsSep, len(os.Args)-1)
+	clangFormatFlags := os.Args[argsSep+1:]
+	flagset.Parse(argsToParse)
 
-	clipboard_content, err := clipboard.ReadAll()
+	clipboardContent, err := clipboard.ReadAll()
 	if err != nil {
 		log.Fatalf("Error reading the clipboard: %v\n", err)
 		os.Exit(1)
 	}
 
-	clipboard_content = TrimTrailingWhitespaces(clipboard_content)
-	prefix, indent := IdentifyPrefix(clipboard_content)
-	clipboard_content = clipboard_content[len(prefix):]
+	clipboardContent = trimTrailingWhitespaces(clipboardContent)
+	prefix, indent := identifyPrefix(clipboardContent)
+	clipboardContent = clipboardContent[len(prefix):]
 
-	log.Printf("Formatting %v chars with %v %v\n", len(clipboard_content), *executable, clang_format_flags)
-	log.Printf("Indent is '%v'\n", indent)
+	log.Printf("Formatting %v chars with %v %v\n", len(clipboardContent), *executable, clangFormatFlags)
 
 	cmd := exec.Command(*executable)
 	stdin, err := cmd.StdinPipe()
@@ -90,31 +91,35 @@ func main() {
 
 	go func() {
 		defer stdin.Close()
-		io.WriteString(stdin, clipboard_content)
+		io.WriteString(stdin, clipboardContent)
 	}()
 
 	out, err := cmd.Output()
 	if err != nil {
 		log.Fatalf("Error with clang-format: %v\n", err)
-		switch spec_err := err.(type) {
+		switch specErr := err.(type) {
 		case *exec.ExitError:
-			log.Fatalln(spec_err)
+			log.Fatalln(specErr)
 		}
 	}
 
-	out_str := string(out)
-	log.Printf("Formatted:\n%v\n", out_str)
-	lines := strings.SplitAfter(out_str, "\n")
-	lines = Map(lines, func(s string) string {
-		if len(s) > 0 {
-			return indent + s
-		} else {
+	outStr := string(out)
+	lines := strings.SplitAfter(outStr, "\n")
+	if *keepIndentation {
+		lines = apply(lines, func(s string) string {
+			if len(s) > 0 {
+				return indent + s
+			}
 			return s
-		}
-	})
-	log.Printf("Indented:\n%v\n", strings.Join(lines, ""))
+		})
+	}
 
-	err = clipboard.WriteAll(prefix + strings.Join(lines, ""))
+	if *stripLeadingNewlines {
+		outStr = strings.Join(lines, "")
+	} else {
+		outStr = prefix + strings.Join(lines, "")
+	}
+	err = clipboard.WriteAll(outStr)
 	if err != nil {
 		log.Fatalf("Error writing the clipboard: %v\n", err)
 		os.Exit(1)
