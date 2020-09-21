@@ -20,6 +20,4 @@ You may also require to install a clipboard interface such as xclip
 
 Configure a new shortcut in your DE.
 
-For instance, I bind `Ctrl+D` to `clang-format-clipboard -executable=clang-format-9`.
-
 Put a `.clang-format` file where your DE calls the executable. On Ubuntu 18.04, putting it in your home folder seems to work.
